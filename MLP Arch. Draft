@@ -15,11 +15,11 @@ class MLP:
   def backpropagation(self, list_of_input_vectors)
     pass
 
-  def batch_alg(self, TR):
-    MLP.train(TR)
-    MLP.backpropagation(TR)
+def batch_alg(self, TR):
+  MLP.train(TR)
+  MLP.backpropagation(TR)
 
-  def online_alg(self, TR):
-    for p in TR:
-      MLP.train(p)
-      MLP.backpropagation(p)
+def online_alg(self, TR):
+  for p in TR:
+    MLP.train(p)
+    MLP.backpropagation(p)
