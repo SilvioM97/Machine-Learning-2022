@@ -28,8 +28,6 @@ class MLP:
         self.n_output = sizes[-1] #number of output units
         self.hidden_layers = [np.random.randn(y,x) for (y, x) in zip(self.sizes[1:], self.sizes[:-1])] #list of weight matrices for hidden layers
         self.biases = [np.random.random(x) for x in self.sizes[1:]]
-        self.Gradient_list= [np.zeros((y,x)) for y, x in zip(self.sizes[1:], self.sizes[:-1])]
-        self.Gradient_bias_list= [np.zeros(x) for x in self.sizes[1:]]
   
     def feedfoward(self, input):
         for (W, b) in zip(self.hidden_layers[:-1], self.biases[:-1]):
