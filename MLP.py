@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import matplotlib as plt
+import matplotlib.pyplot as plt
 
 
 def sigmoid(x, a=1):
@@ -12,12 +12,7 @@ def sigmoid_derivative(x,a=1):
 def E_p(o_k, d):
     return (o_k-d)**2
 
-def E(example_list):
-    #example_list in shape [(x_p,d_p),...]
-    E_sum=0
-    for example in example_list:
-        E_sum+=E_p(example[0],example[1])
-    return E_sum
+
 
 class MLP:
 
@@ -29,6 +24,7 @@ class MLP:
         self.hidden_layers = [np.random.randn(y, x) for (y, x) in
                               zip(self.sizes[1:], self.sizes[:-1])]  # list of weight matrices for hidden layers
         self.biases = [np.random.random(x) for x in self.sizes[1:]]
+        self.MSE_training=[]
 
     def feedforward(self, input):
         for (W, b) in zip(self.hidden_layers[:-1], self.biases[:-1]):
@@ -77,10 +73,10 @@ class MLP:
             item.reverse()
         return np.array([grad_list, grad_bias_list])
 
-    def training(self, data_train, epochs, mb, eta):
+    def training(self, data_train, epochs=1, mb=1, eta=0.5):
         eta = eta / mb
         for epoch in range(epochs):
-            for i in range(np.ceil(len(data_train) / mb)):
+            for i in range(int(np.ceil(len(data_train) / mb))):
                 delta_w = [np.zeros((y, x)) for y, x in zip(self.sizes[1:], self.sizes[:-1])]
                 delta_b = [np.zeros(x) for x in self.sizes[1:]]
                 gradients = np.array([delta_w, delta_b])
@@ -90,7 +86,18 @@ class MLP:
                     gradients = np.add(gradients, self.gradient(data_train[j][0], data_train[j][1]))
                 self.hidden_layers = np.add(gradients[0] * eta, self.hidden_layers)
                 self.biases = np.add(gradients[1] * eta, self.biases)
-                
+            self.MSE_training.append(self.MSE(data_train))
+    
+    def MSE(self, example_list):
+    #example_list in shape [(x_p,d_p),...]
+        E_sum=0
+        for example in example_list:
+            E_sum+=E_p(self.feedforward(example[0]),example[1])
+        return E_sum/len(example_list)
+    
+    def learning_curve(self):
+        plt.plot([i for i in range(len(self.MSE_training))], self.MSE_training)
+        plt.show()
                 
 #   aggiungere scelta della funzione d'attivazione
 #   cross validation
