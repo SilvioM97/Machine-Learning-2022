@@ -7,7 +7,7 @@ import itertools
 import time
 
 
-def encode_dataset(dataset, start_input_column=2, total_columns=6, target_column=1):
+def encode_dataset(dataset, start_input_column, target_column, total_columns = 6):
     dd={}
     i=0
     for column in range(total_columns):
@@ -78,27 +78,28 @@ class MLP:
         self.n_input = sizes[0]  # number of input units
         self.n_output = sizes[-1]  # number of output units
         np.random.seed(self.seed)
-        self.hidden_layers = np.array([self.weights_sigma*np.random.randn(y, x) for (y, x) in zip(self.sizes[1:], self.sizes[:-1])], dtype=object)  # list of weight matrices for hidden layers
+        self.hidden_layers = np.array([(self.weights_sigma*np.random.randn(y, x)).tolist() for (y, x) in zip(self.sizes[1:], self.sizes[:-1])], dtype=object)  # list of weight matrices for hidden layers
+        #self.hidden_layers = np.array([self.weights_sigma*np.random.randn(y, x).tolist() for (y, x) in zip(self.sizes[1:], self.sizes[:-1])], dtype=object)  # list of weight matrices for hidden layers
         np.random.seed(self.seed)
         self.biases = np.array([self.weights_sigma*np.random.random(x) for x in self.sizes[1:]], dtype=object)
 
     def feedforward(self, input):
         for (W, b) in zip(self.hidden_layers[:-1], self.biases[:-1]):
             input = act_f(self.activation, 0)(W @ input + b)
-        net = self.hidden_layers[-1].dot(input) + self.biases[-1]  # compute the net for the output layer
+        net = (self.hidden_layers[-1])@input + self.biases[-1]  # compute the net for the output layer
         output = sigmoid(net)  # compute the output for the output layer
-        return output
+        return output #np.round(output, 0)
 
     def saved_feedforward(self, input):
         output = [input]
         net_matrix = []
         for i, (W, b) in enumerate(zip(self.hidden_layers[:-1], self.biases[:-1])):
-            net = W.dot(input) + b  # compute the net for a hidden layer
+            net = W@input + b  # compute the net for a hidden layer
             o = act_f(self.activation, 0)(net)  # compute the output for a hidden layer
             input = o  # assigning inputs
             output.append(o)  # save outputs
             net_matrix.append(net)  # save nets
-        net = self.hidden_layers[-1].dot(input) + self.biases[-1]  # compute the net for the output layer
+        net = self.hidden_layers[-1]@input + self.biases[-1]  # compute the net for the output layer
         output.append(sigmoid(net))  # compute the output for the output layer
         net_matrix.append(net)
         return output, net_matrix
@@ -113,7 +114,7 @@ class MLP:
             return delta_k, grad_list, grad_bias_list
         i += 1
         delta_j = self.backprop(input, target, o[1:], net[1:], grad_list, grad_bias_list, i)[0]  # recursive call (delta_(i+1))
-        pre_delta = self.hidden_layers[i].T.dot(delta_j) * act_f(self.activation, 1)(net[0])  # vector delta_i
+        pre_delta = np.transpose(self.hidden_layers[i])@(delta_j) * act_f(self.activation, 1)(net[0])  # vector delta_i
         grad_list.append(np.outer(pre_delta, o[0]))  # compute and append the derivatives wrt weights
         grad_bias_list.append(pre_delta)  # append the derivatives wrt biases
         return pre_delta, grad_list, grad_bias_list
@@ -129,7 +130,12 @@ class MLP:
             item.reverse()
         return np.array([grad_list, grad_bias_list], dtype=object)
 
-    def training(self, data_train, epochs=100, mb=1, eta=1, theta={}, momentum=False, alpha_mom=1, regularization=False, lambda_reg=0.001):
+    def training(self, data_train, epochs=100, mb=1, eta=1, theta={}, momentum=False, alpha_mom=1, regularization=False, lambda_reg=0.001, test_set=[]):
+        if test_set != []:
+            TR_cost=[]
+            TS_cost=[]
+            TR_acc=[]
+            TS_acc=[]
         if "eta" in theta:
             eta=theta["eta"]
         if "alpha_mom" in theta:
@@ -140,12 +146,15 @@ class MLP:
             regularization=True
         eta = eta / mb
         if momentum:
-            old_gradients=np.array([[np.zeros((y, x)) for y, x in zip(self.sizes[1:], self.sizes[:-1])], [np.zeros(x) for x in self.sizes[1:]]])
+            old_gradients=np.array([[np.zeros((y, x)) for y, x in zip(self.sizes[1:], self.sizes[:-1])], [np.zeros(x) for x in self.sizes[1:]]], dtype=object)
+        count = 0
+        count2 = 0
+        Remp = 100
         for epoch in range(epochs):
             random.shuffle(data_train) # shuffle dataset between epochs
             for i in range(math.ceil(len(data_train) / mb)):
-                delta_w = [np.zeros((y, x)) for y, x in zip(self.sizes[1:], self.sizes[:-1])]
-                delta_b = [np.zeros(x) for x in self.sizes[1:]]
+                delta_w = np.array([np.zeros((y, x)) for y, x in zip(self.sizes[1:], self.sizes[:-1])], dtype=object)
+                delta_b = np.array([np.zeros(x) for x in self.sizes[1:]], dtype=object)
                 gradients = np.array([delta_w, delta_b], dtype=object)
                 for j in range(mb * i, mb * (i + 1)):
                     if j < len(data_train):
@@ -163,6 +172,35 @@ class MLP:
                 #print(self.cost_function(data_train))
                 self.hidden_layers = np.add(gradients[0] * eta, self.hidden_layers)
                 self.biases = np.add(gradients[1] * eta, self.biases)
+            Remp_prec = Remp
+            Remp = self.MSE(data_train)
+            if test_set != []:
+                TR_cost += [Remp]
+                TS_cost += [self.MSE(test_set)]
+                TR_acc += [self.accuracy(data_train)]
+                TS_acc += [self.accuracy(test_set)]
+            #If we already did at least 50 epochs we want to check for early stopping criteria
+            if epoch > 50:
+                #Lower bound treshold
+                if Remp < 1e-2:
+                    count2 += 1
+                else:
+                    count2 = max(0, count2-1)
+                #Empirical error stucks
+                if Remp >= Remp_prec - Remp_prec/10000:
+                    count += 1
+                else:
+                    count = max(0, count-1)
+                #If we are stuck for more than 30 iterations or the empirical error is too small for more than 15 epochs, stop training
+                if count > 100:
+                    print("!Escaped for stall!")
+                    break
+                if count2 > 15:
+                    print("!Escaped for low MSE!")
+                    break
+        if test_set != []:
+            return TR_cost, TS_cost, TR_acc, TS_acc
+
 
     ## R_emp measures:
 
@@ -203,10 +241,10 @@ class MLP:
     def reset_weights(self, same_init_seed=False):
         if same_init_seed:
             np.random.seed(self.seed)
-        self.hidden_layers = np.array([self.weights_sigma*np.random.randn(y, x) for (y, x) in zip(self.sizes[1:], self.sizes[:-1])], dtype=object)  # list of weight matrices for hidden layers
+        self.hidden_layers = np.array([(self.weights_sigma*np.random.randn(y, x)) for (y, x) in zip(self.sizes[1:], self.sizes[:-1])], dtype=object)  # list of weight matrices for hidden layers
         if same_init_seed:
             np.random.seed(self.seed)
-        self.biases = np.array([self.weights_sigma*np.random.random(x) for x in self.sizes[1:]], dtype=object)
+        self.biases = np.array([(self.weights_sigma*np.random.random(x)) for x in self.sizes[1:]], dtype=object)
 
     def learning_curve(self, ax, Cost_training):
         ax.plot(Cost_training)
@@ -262,7 +300,8 @@ class MLP:
 #def random_grid(hyperparameters, samples=10):
 #    return [dict(zip(hyperparameters.keys(), [random.uniform(min(v), max(v)) for v in hyperparameters.values()])) for i in range(5)]
 
-def cross_validation(model, dataset, hyperparameters, K=5, mb=1, search_type="grid", samples=10, convergence_sample=30, error_threshold=0.0001):
+def cross_validation(model, dataset, hyperparameters, K=5, mb=1, search_type="grid", samples=10, convergence_sample=30, error_threshold=0.0001, escaping_epochs=1000):
+    #model=MLP([17,x,y,z.., 1])
     fold_size = len(dataset) // K
     best_pair = (-1,0)
     if search_type == "grid":
@@ -276,18 +315,8 @@ def cross_validation(model, dataset, hyperparameters, K=5, mb=1, search_type="gr
         TR_errs=0
         for i in range(K):
             model.reset_weights()
-            TR_error=model.MSE(dataset[:i*fold_size]+dataset[(i+1)*fold_size:])
-            e=0
-            error_percentage=100
-            TR_error_old=[]
-            while error_percentage > error_threshold:
-                model.training(dataset[:i*fold_size]+dataset[(i+1)*fold_size:], theta=theta, mb=mb, epochs=1) #training == select h(theta,\Bar{D^k})
-                TR_error_old.append(TR_error)
-                TR_error = model.MSE(dataset[:i*fold_size]+dataset[(i+1)*fold_size:])
-                if e > convergence_sample:
-                    error_percentage = (TR_error-np.mean(TR_error_old))/TR_error
-                    TR_error_old.pop(0)
-                e+=1
+            model.training(dataset[:i*fold_size]+dataset[(i+1)*fold_size:], theta=theta, mb=mb, epochs=escaping_epochs) #training == select h(theta,\Bar{D^k})
+            TR_error = model.MSE(dataset[:i*fold_size]+dataset[(i+1)*fold_size:])
             R_emp += model.errors_count(dataset[i*fold_size:(i+1)*fold_size]) #estimate R through the empirical error on the current D^k
                                                                            #we sum because we are not interested in the single R_emp,
                                                                            #we need them all to do an average over the folds
@@ -312,75 +341,39 @@ def cross_validation(model, dataset, hyperparameters, K=5, mb=1, search_type="gr
     
 def final_training(model, data_train, test_set, theta, TR_threshold, mb=1, learning_curve=False, mse=True, accuracy=True, stopping_criteria="convergence", convergence_sample=30, error_threshold=0.0001, escaping_epochs=300):
     model.reset_weights()
-    TR_accuracy = model.accuracy(data_train)
-    TR_mse = model.MSE(data_train)
-    if learning_curve:
-        TR_cost=[]
-        TS_cost=[]
-        TR_acc=[]
-        TS_acc=[]
-    e=0
-    if stopping_criteria=="threshold":
-        while TR_mse > TR_threshold:
-            model.training(data_train, mb=mb, epochs=1, theta=theta)
-            TR_accuracy = model.accuracy(data_train)
-            TR_mse = model.MSE(data_train)
-            if learning_curve:
-                TR_cost.append(TR_mse)
-                TR_acc.append(TR_accuracy)
-            TS_accuracy = model.accuracy(test_set)
-            TS_mse = model.MSE(test_set)
-            if learning_curve:
-                TS_acc.append(TS_accuracy)
-                TS_cost.append(TS_mse)
-            e+=1
-            if e > escaping_epochs:
-                break
+    #e=0
+    #if stopping_criteria=="threshold":
+    #    while TR_mse > TR_threshold:
+    #        model.training(data_train, mb=mb, epochs=1, theta=theta)
+    #        TR_accuracy = model.accuracy(data_train)
+    #        TR_mse = model.MSE(data_train)
+    #        if learning_curve:
+    #            TR_cost.append(TR_mse)
+    #            TR_acc.append(TR_accuracy)
+    #        TS_accuracy = model.accuracy(test_set)
+    #        TS_mse = model.MSE(test_set)
+    #        if learning_curve:
+    #            TS_acc.append(TS_accuracy)
+    #            TS_cost.append(TS_mse)
+    #        e+=1
+    #        if e > escaping_epochs:
+    #            break
     if stopping_criteria=="convergence":
-        TR_mse=model.MSE(data_train)
-        e=0
-        error_percentage=100
-        TR_error_old=[]
-        while error_percentage > error_threshold:
-            model.training(data_train, theta=theta, mb=mb, epochs=1) #training == select h(theta,\Bar{D^k})
-            TR_error_old.append(TR_mse)
-            TR_accuracy = model.accuracy(data_train)
-            TR_mse = model.MSE(data_train)
-            if learning_curve:
-                TR_cost.append(TR_mse)
-                TR_acc.append(TR_accuracy)
-            TS_accuracy = model.accuracy(test_set)
-            TS_mse = model.MSE(test_set)
-            if learning_curve:
-                TS_acc.append(TS_accuracy)
-                TS_cost.append(TS_mse)
-            if e > convergence_sample:
-                error_percentage = (TR_mse-np.mean(TR_error_old))/TR_mse
-                TR_error_old.pop(0)
-            e+=1
-            if e > escaping_epochs:
-                break
-    print("TS Accuracy: ", TS_accuracy, "TR Accuracy: ", TR_accuracy, "epochs: ", e, "TS MSE: ", TS_mse, "TR MSE: ", TR_mse)
-    ##
+        TR_cost, TS_cost, TR_acc, TS_acc= model.training(data_train, theta=theta, mb=mb, epochs=escaping_epochs, test_set=test_set) #training == select h(theta,\Bar{D^k})
+        print("TS Accuracy: ", TS_acc[-1], "TR Accuracy: ", TR_acc[-1], "TS MSE: ", TS_cost[-1], "TR MSE: ", TR_cost[-1])
     if learning_curve:
-        N=0
-        if accuracy:
-            N+=1
-        if mse:
-            N+=1
-        fig, axarr = plt.subplots(1, N)
+        fig, axarr = plt.subplots(1, 2)
         plt.subplots_adjust(hspace=0.5)
         fig.suptitle("Learning Curves", fontsize=18, y=0.95)
-        measure_list=[]
-        if accuracy:
-            c = (TR_acc,TS_acc, "Accuracy")
-            measure_list.append(c)
-        if mse:
-            c = (TR_cost,TS_cost, "Cost Function")
-            measure_list.append(c)
+        fig.set_size_inches(18.5, 10.5)
+        #b = scan_Remp_list(TR_cost, denominator=1000)
+        #a = scan_Remp_list(TR_cost, denominator=10000)
+        measure_list=[(TR_acc,TS_acc, "Accuracy"), (TR_cost,TS_cost, "MSE")]
         for measures, ax in zip(measure_list, axarr.ravel()):
             ax.plot(measures[0], label="Training Set")
             ax.plot(measures[1], label="Test Set")
+            #ax.axvline(x = b, color = 'b', label = 'R_emp >= R_emp_prec - 0.1% R_emp_prec 100times')
+            #ax.axvline(x = a, color = 'r', label = 'R_emp >= R_emp_prec - 0.01% R_emp_prec 100times')
             ax.set_xlabel("epochs")
             ax.set_ylabel(measures[2])
             ax.legend()
