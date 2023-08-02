@@ -1,6 +1,6 @@
 # NNfromScratch-py
 
-This repository contains a Python framework for training and testing neural networks from scratch. Cross validation could run in parallel for efficient validation
+This repository contains a Python framework for building, training and testing neural networks from scratch. Cross validation could run in parallel for efficient validation
 
 ## Usage
 
