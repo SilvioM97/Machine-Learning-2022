@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def sigmoid(x, a=1):
     x = np.array([float(b) for b in x]) #float conversion of the vector x to avoid having a 0 integer in the np.exp argument
     return 1 / (1 + np.exp(-(a * x)))
