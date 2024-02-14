@@ -22,6 +22,7 @@ This repository contains a Python framework for building, training and testing n
    - `eta`: The learning rate used in gradient descent optimization.
    - `epochs`: The number of training epochs.
    - `eta_decay`: Whether to apply learning rate decay during training.
+     
   Example:
    ```python
    hyperparameters = {
